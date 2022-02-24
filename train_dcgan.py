@@ -17,12 +17,14 @@ from tqdm import tqdm
 import torch.backends.cudnn as cudnn
 import numpy as np
 import random
+from torch.utils.tensorboard import SummaryWriter
+import torchvision.utils as vutils
 
 from models.dcgan import *
 from dataset.data_loader import *
 from config.dcgan import config
-from torch.utils.tensorboard import SummaryWriter
-import torchvision.utils as vutils
+from utils.tools import *
+
 
 random.seed(2022)
 torch.manual_seed(2022)
@@ -40,7 +42,8 @@ def parse_args():
     parser.add_argument('--download', default=True)
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=64)
-    parser.add_argument('--cuda', type=str, default='false')
+    parser.add_argument('--img_size', default=64, type=int)
+    parser.add_argument('--cuda', action='store_true', help='enables cuda')
     parser.add_argument('--is_train', type=bool, default=True)
     parser.add_argument('--save_img_iter_step', type=int, default=2000)
     parser.add_argument('--print_loss_iter', type=int, default=100)
@@ -69,30 +72,6 @@ def check_args(args):
 
     return args
 
-
-def get_real_images(images, image_channel, number_of_images):
-    images = images.mul(0.5).add(0.5)
-    if image_channel == 3:
-        image_np = images.view(-1, image_channel, config['img_size'], config['img_size']).data.cpu().numpy()
-    else:
-        image_np = images.view(-1, config['img_size'], config['img_size']).data.cpu().numpy()
-
-    return image_np[:number_of_images]
-
-def get_generate_images(netG, z, image_channel, number_of_images):
-    netG.eval()
-    output = netG(z)
-    samples = output.mul(0.5).add(0.5)
-    samples = samples.data.cpu().numpy()[: number_of_images]
-
-    generated_images = []
-    for sample in samples:
-        if image_channel == 3:
-            generated_images.append(sample.reshape(image_channel, config['img_size'], config['img_size']))
-        else:
-            generated_images.append(sample.reshape(config['img_size'], config['img_size']))
-
-    return np.array(generated_images)
 
 def train(args):
 
@@ -203,16 +182,16 @@ def train(args):
                         '{}/fake_samples_epoch_{}_iter_{}.png'.format(fake_images_save_path ,epoch, current_iter),
                         normalize=True)
 
-                # Log values and gradients of the paramaters
-                for tag, value in netD.named_parameters():
-                    tag = tag.replace('.', '/')
-                    writer.add_histogram(tag, value.data.cpu().numpy(), current_iter)
-                    writer.add_histogram(tag + '/grad', value.grad.data.cpu().numpy(), current_iter)
+                # # Log values and gradients of the paramaters
+                # for tag, value in netD.named_parameters():
+                #     tag = tag.replace('.', '/')
+                #     writer.add_histogram(tag, value.data.cpu().numpy(), current_iter)
+                #     writer.add_histogram(tag + '/grad', value.grad.data.cpu().numpy(), current_iter)
 
                 # Log the images while training
                 info = {
-                    'real_images': get_real_images(real_imgs, config['in_channel'], number_of_images),
-                    'generated_image': get_generate_images(netG, fixed_noise, config['in_channel'], number_of_images)
+                    'real_images': get_real_images(real_imgs, config['in_channel'], number_of_images, real_imgs.size(2), real_imgs.size(3)),
+                    'generated_image': get_generate_images(netG, fixed_noise, config['in_channel'], number_of_images, real_imgs.size(2), real_imgs.size(3))
                 }
 
                 for tag, images in info.items():

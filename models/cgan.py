@@ -1,172 +1,116 @@
 '''
  FILENAME:      cgan.py
 
- AUTHORS:       Pan shaohua
+ AUTHORS:       Shaohua.Pan
 
- START DATE:    2022.02.16/23:36
+ START DATE:    Wednesday February 23rd 2022
 
  CONTACT:       duanxianshi@gmail.com
 '''
 
-from turtle import forward
+import sys
+sys.path.append('/data1/shaohua/code/GANToy')
+
 import torch
 import torch.nn as nn
+from config.cgan import config
 
-import config
 
+nz = config['z_dim']
+ngf = config['ngf']
+ndf = config['ndf']
 
-class FCBlock(nn.Module):
-    def __init__(self, in_features, out_features, activation_func, normalize):
-        super(FCBlock, self).__init__()
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        torch.nn.init.normal_(m.weight, 0.0, 0.02)
+    elif classname.find('BatchNorm') != -1:
+        torch.nn.init.normal_(m.weight, 1.0, 0.02)
+        torch.nn.init.zeros_(m.bias)
 
-        self.fc = nn.Linear(in_features, out_features)
-        self.bn = nn.BatchNorm1d(out_features) if normalize else None
-        self.af = activation_func
-
-    def forward(self, x):
-        x = x.view(x.size(0), -1)
-        y = self.fc(x)
-        if self.bn:
-            y = self.bn(y)
-        return self.af(y)
-
-# class Generator(nn.Module):
-#     def __init__(self, blocks, normalize):
-#         super(Generator, self).__init__()
-#         self.net = nn.Sequential(*[
-#             FCBlock(b['in_features'], b['out_features'], b['activation_func'], normalize)
-#             for b in blocks
-#         ])
-
-#     def forward(self, x, y):
-#         z = torch.cat([x, y], dim=1)
-#         z = self.net(z)
-#         return z
 
 class Generator(nn.Module):
-    def __init__(self, blocks, normalize):
+    def __init__(self, nc=3, n_classes=10):
         super(Generator, self).__init__()
 
-        self.fc1 = nn.Linear(110, 256)
-        self.bn1 = nn.BatchNorm1d(256) if normalize else None
-        self.relu1 = nn.ReLU(inplace=True)
+        self.main = nn.Sequential(
+            nn.ConvTranspose2d(nz + n_classes, ngf * 8, 4, 1, 0, bias=False),
+            nn.BatchNorm2d(ngf * 8),
+            nn.LeakyReLU(0.2, inplace=True),
 
-        self.fc2 = nn.Linear(256, 512)
-        self.bn2 = nn.BatchNorm1d(512) if normalize else None
-        self.relu2 = nn.ReLU(inplace=True)
+            nn.ConvTranspose2d(ngf*8, ngf*4, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf*4),
+            nn.LeakyReLU(0.2, inplace=True),
 
-        self.fc3 = nn.Linear(512, 1024)
-        self.bn3 = nn.BatchNorm1d(1024) if normalize else None
-        self.relu3 = nn.ReLU(inplace=True)
+            nn.ConvTranspose2d(ngf*4, ngf*4, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf*4),
+            nn.LeakyReLU(0.2, inplace=True),
 
-        self.fc4 = nn.Linear(1024, 1024)
-        self.bn4 = nn.BatchNorm1d(1024) if normalize else None
-        self.relu4 = nn.ReLU(inplace=True)
+            nn.ConvTranspose2d(ngf*4, ngf*2, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf*2),
+            nn.LeakyReLU(0.2, inplace=True),
 
-        self.fc5 = nn.Linear(1024, 784)
-        self.bn5 = nn.BatchNorm1d(784) if normalize else None
-        self.tanh = nn.Tanh()
+            nn.ConvTranspose2d(ngf*2, ngf*2, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf*2),
+            nn.LeakyReLU(0.2, inplace=True),
 
-    def forward(self, x, y):
-        z = torch.cat([x, y], dim=1)
+            nn.ConvTranspose2d(ngf*2, nc, 4, 2, 1, bias=False),
+            nn.Tanh()
+        )
 
-        z = self.fc1(z)
-        if self.bn1:
-            z = self.bn1(z)
-        z = self.relu1(z)
+    def forward(self, input):
+        out = self.main(input)
 
-        z = self.fc2(z)
-        if self.bn2:
-            z = self.bn2(z)
-        z = self.relu2(z)
+        return out
 
-        z = self.fc3(z)
-        if self.bn3:
-            z = self.bn3(z)
-        z = self.relu3(z)
-
-        z = self.fc4(z)
-        if self.bn4:
-            z = self.bn4(z)
-        z = self.relu4(z)
-
-        z = self.fc5(z)
-        if self.bn5:
-            z = self.bn5(z)
-        z = self.tanh(z)
-
-        return z
-
-
-# class Discriminator(nn.Module):
-#     def __init__(self, blocks, normalize, drop_ratio):
-#         super(Discriminator, self).__init__()
-#         self.dropout = nn.Dropout(drop_ratio)
-#         self.net = nn.Sequential(*[
-#             FCBlock(b['in_features'], b['out_features'], b['activation_func'], normalize)
-#             for b in blocks
-#         ])
-
-#     def forward(self, x, y):
-#         x_ = self.dropout(x)
-#         z = torch.cat([x_, y], dim=1)
-#         z = self.net(z)
-#         return z
 
 class Discriminator(nn.Module):
-    def __init__(self, blocks, normalize, drop_ratio):
+    def __init__(self, nc=3, n_classes=10):
         super(Discriminator, self).__init__()
-        self.dropout = nn.Dropout(drop_ratio)
 
-        self.fc1 = nn.Linear(794, 512)
-        self.bn1 = nn.BatchNorm1d(512) if normalize else None
-        # self.relu1 = nn.LeakyReLU(0.2, inplace=True)
+        self.main = nn.Sequential(
+            nn.Conv2d(nc+n_classes, ndf * 2, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ndf*2),
+            nn.LeakyReLU(0.2, inplace=True),
 
-        self.fc2 = nn.Linear(512, 256)
-        self.bn2 = nn.BatchNorm1d(256) if normalize else None
-        # self.relu2 = nn.LeakyReLU(0.2, inplace=True)
+            nn.Conv2d(ndf*2, ndf*2, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ndf*2),
+            nn.LeakyReLU(0.2, inplace=True),
 
-        self.fc3 = nn.Linear(256, 128)
-        self.bn3 = nn.BatchNorm1d(1024) if normalize else None
-        # self.relu3 = nn.LeakyReLU(0.2, inplace=True)
+            nn.Conv2d(ndf*2, ndf*4, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ndf*4),
+            nn.LeakyReLU(0.2, inplace=True),
 
-        self.fc4 = nn.Linear(128, 64)
-        self.bn4 = nn.BatchNorm1d(1024) if normalize else None
-        # self.relu4 = nn.LeakyReLU(0.2, inplace=True)
+            nn.Conv2d(ndf*4, ndf*4, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ndf*4),
+            nn.LeakyReLU(0.2, inplace=True),
 
-        self.fc5 = nn.Linear(64, 1)
-        self.bn5 = nn.BatchNorm1d(1) if normalize else None
+            nn.Conv2d(ndf*4, ndf*8, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ndf*8),
+            nn.LeakyReLU(0.2, inplace=True),
 
-        self.relu = nn.LeakyReLU(0.2, inplace=True)
+            nn.Conv2d(ndf*8, 1, 4, 1, 0, bias=False),
+            nn.Flatten(),
+            nn.Sigmoid()
+        )
 
-        self.af = nn.Sigmoid()
+    def forward(self, input):
+        out = self.main(input)
 
-    def forward(self, x, y):
-        x_ = self.dropout(x)
-        z = torch.cat([x_, y], dim=1)
+        return out
 
-        z = self.fc1(z)
-        if self.bn1:
-            z = self.bn1(z)
-        z = self.relu(z)
+if __name__ == '__main__':
+    netG = Generator()
+    netG.eval()
 
-        z = self.fc2(z)
-        if self.bn2:
-            z = self.bn2(z)
-        z = self.relu(z)
+    z = torch.randn(4, 110, 1, 1)
+    out = netG(z)
 
-        z = self.fc3(z)
-        if self.bn3:
-            z = self.bn3(z)
-        z = self.relu(z)
+    print(out.shape)
 
-        z = self.fc4(z)
-        if self.bn4:
-            z = self.bn4(z)
-        z = self.relu(z)
+    netD = Discriminator()
+    netD.eval()
 
-        z = self.fc5(z)
-        if self.bn5:
-            z = self.bn5(z)
-        z = self.af(z)
-        return z
+    input_data = torch.randn(4, 13, 128, 128)
+    out = netD(input_data)
+    print(out.shape)
