@@ -28,7 +28,7 @@ import random, numpy.random
 
 from models.cgan import Generator, Discriminator, weights_init
 from config.cgan import config
-from dataset.data_loader import *
+from dataset.get_dataset import *
 from utils.tools import *
 
 def seed_torch(seed=2021):

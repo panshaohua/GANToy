@@ -21,7 +21,7 @@ from torch.utils.tensorboard import SummaryWriter
 import torchvision.utils as vutils
 
 from models.dcgan import *
-from dataset.data_loader import *
+from dataset.get_dataset import *
 from config.dcgan import config
 from utils.tools import *
 
